@@ -7,6 +7,7 @@ import tkinter.messagebox
 import datetime
 import re
 import os
+import copy
 
 import tkinter as tk
 import function as f
@@ -53,11 +54,13 @@ class ArangeDuty():
             after_work_go = f.read_data()["after_work_go"]
             back_work_next = f.read_data()['back_work_next']
             if after_work_go:
-                go_rest = f.read_data()['go_rest']
+                # go_rest = f.read_data()['go_rest']
 
-                tk.messagebox.showinfo(title="提示", message="%s已经列入休假名单，将在本周值完班后，下周开始休假" % go_rest)
+                tk.messagebox.showinfo(title="提示",
+                                       message="%s已经列入休假名单，将在本周值完班后，下周开始休假"
+                                               % f.read_data()['go_rest_after_work'])
                 # 执行本周未离队，下周离队打印输出
-                self.after_work_go(go_rest)
+                self.after_work_go()
 
                 self.t.insert("end", "下周值班人员：\r\n")
                 self.list_duty()
@@ -68,8 +71,9 @@ class ArangeDuty():
                 # 读入第一周排班后的顺序，加入调入的人员，就是第二周的
                 self.name_nomal = f.read_data()['cache_name_nomal']
                 self.name_weekend = f.read_data()['cache_name_weekend']
-                self.name_holiday.remove(re_back)
-                f.add_list(re_back, self.name_nomal, self.name_weekend, self.name_holiday)
+                for i in re_back:
+                    self.name_holiday.remove(i)
+                    f.add_list(i, self.name_nomal, self.name_weekend, self.name_holiday)
             elif not back_work_next and not after_work_go:
                 self.name_nomal, self.name_weekend = f.read_curent()
                 self.list_duty()
@@ -83,7 +87,6 @@ class ArangeDuty():
                 how_many_days = str(self.today - self.date)
                 how_many_days = re.match('\d+', how_many_days)
                 how_many_days = int(how_many_days.group())
-                print(how_many_days // 7)
                 how_many_week = how_many_days // 7
                 # 将时间更新为本周星期日的时间
                 f.update_date(self.sunday)
@@ -95,11 +98,13 @@ class ArangeDuty():
                 # 经过loop后，需要再次将初始化self.a
                 self.a = 0
                 self.list_duty()
-            elif after_work_go:
+            elif after_work_go and not back_work_next:
                 data = f.read_data()
                 data['after_work_go'] = False
-                self.name_holiday.append(data['go_rest'])
+                for i in data['go_rest']:
+                    self.name_holiday.append(i)
                 data['name_holiday'] = self.name_holiday
+                data['go_rest'] = []
                 f.write_data(data)
                 # 读入第一周值班，第二周离队的状态，判断当前情况是过了一周，还是过了大于一周，如果一周，输出第二周离队状态，如果n周，loop
                 # n次
@@ -109,25 +114,24 @@ class ArangeDuty():
                 how_many_week = how_many_days // 7
                 # 将时间更新为本周星期日的时间
                 f.update_date(self.sunday)
-                print(how_many_week)
-                if how_many_week < 1:
+                if how_many_week <= 1:
                     self.name_nomal = f.read_data()['after_work_go_name_nomal']
-                    print("0000000", self.name_nomal)
                     self.name_weekend = f.read_data()['after_work_go_name_weekend']
                     f.write_curent(self.name_nomal, self.name_weekend)
                     self.list_duty()
-                elif how_many_week >= 1:
+                elif how_many_week > 1:
                     for i in range(how_many_week):
                         self.loop_list()
-            if back_work_next:
+            elif back_work_next and not after_work_go:
                 data = f.read_data()
                 re_back = data['re_back']
                 data['back_work_next'] = False
-                self.name_holiday.remove(re_back)
                 data['name_holiday'] = self.name_holiday
                 self.name_nomal = f.read_data()['cache_name_nomal']
                 self.name_weekend = f.read_data()['cache_name_weekend']
-                f.add_list(re_back, self.name_nomal, self.name_weekend, self.name_holiday)
+                for i in re_back:
+                    self.name_holiday.remove(i)
+                    f.add_list(i, self.name_nomal, self.name_weekend, self.name_holiday)
                 f.write_data(data)
                 f.write_curent(self.name_nomal, self.name_weekend)
                 # 计算过去了几周
@@ -137,10 +141,42 @@ class ArangeDuty():
                 how_many_week = how_many_days // 7
                 # 将时间更新为本周星期日的时间
                 f.update_date(self.sunday)
-                if how_many_week < 1:
+                if how_many_week <= 1:
                     self.a = 0
                     self.list_duty()
-                elif how_many_week >= 1:
+                elif how_many_week > 1:
+                    for i in range(how_many_week):
+                        self.loop_list()
+                    # 经过loop后，需要再次将初始化self.a
+                    self.a = 0
+                    self.list_duty()
+            elif back_work_next and after_work_go:
+                data = f.read_data()
+                re_back = data['re_back']
+                data['after_work_go'] = False
+                data['back_work_next'] = False
+
+                for i in data['go_rest_after_work']:
+                    self.name_holiday.append(i)
+                for i in re_back:
+                    self.name_holiday.remove(i)
+                data['re_back'] = []
+                data['name_holiday'] = self.name_holiday
+                self.name_nomal = f.read_data()['back_work_next_name_nomal']
+                self.name_weekend = f.read_data()['back_work_next_name_weekend']
+                f.write_data(data)
+                f.write_curent(self.name_nomal, self.name_weekend)
+                # 计算过去了几周
+                how_many_days = str(self.today - self.date)
+                how_many_days = re.match('\d+', how_many_days)
+                how_many_days = int(how_many_days.group())
+                how_many_week = how_many_days // 7
+                # 将时间更新为本周星期日的时间
+                f.update_date(self.sunday)
+                if how_many_week <= 1:
+                    self.a = 0
+                    self.list_duty()
+                elif how_many_week > 1:
                     for i in range(how_many_week):
                         self.loop_list()
                     # 经过loop后，需要再次将初始化self.a
@@ -172,8 +208,14 @@ class ArangeDuty():
                  ).place(x=300, y=20, anchor='nw')
         self.v3 = tk.StringVar()
         self.l1 = tk.Label(self.root, textvariable=self.v3, width=70, font='Arial 10 bold')
-        self.l2 = tk.Label(self.root, text="请输入归队人员（输入人员将加入到本周或下周值班<如果无，可不填> :", width=65, bg='SpringGreen')
-        self.l3 = tk.Label(self.root, text='请输入即将休假人员（输入人员将在本周或下周从值班人员中剔除<如果无，可不填>) :', width=65, bg='LightPink')
+        self.l2 = tk.Label(self.root,
+                           text="请输入休假或公差结束归队人员（输入人员将加入到本周或下周值班:)",
+                           width=60,
+                           bg='SpringGreen')
+        self.l3 = tk.Label(self.root,
+                           text='请输入即将休假或公差人员（输入人员将在本周或下周从值班人员中剔除) :',
+                           width=60,
+                           bg='LightPink')
         self.v1 = tk.StringVar()
         self.v2 = tk.StringVar()
         # 用于显示值班人员或者调整后得标签
@@ -206,12 +248,12 @@ class ArangeDuty():
         self.l5.place(x=20, y=135, anchor='nw')
         self.l4.place(x=20, y=162, anchor='nw')
 
-        self.b1.place(x=585, y=80, anchor='nw')
-        self.b2.place(x=585, y=110, anchor='nw')
+        self.b1.place(x=550, y=80, anchor='nw')
+        self.b2.place(x=550, y=110, anchor='nw')
         self.b3.place(x=650, y=400, anchor='nw')
 
-        self.e1.place(x=485, y=85, anchor='nw')
-        self.e2.place(x=485, y=110, anchor='nw')
+        self.e1.place(x=450, y=85, anchor='nw')
+        self.e2.place(x=450, y=110, anchor='nw')
 
         self.t.place(x=30, y=195)
         self.t.see('end')
@@ -224,8 +266,6 @@ class ArangeDuty():
             date = f.read()
             date = datetime.date(*map(int, date.split('-')))
         today_ch = self.today.strftime("%Y{y}%m{m}%d{d}").format(y="年", m='月', d='日')
-        # a = self.arr_duty()
-        # print(a)
         date_welcome = "今天是 %s " % str(today_ch)
         return date, date_welcome
 
@@ -239,51 +279,55 @@ class ArangeDuty():
         pass
 
     # 本周值班，下周离队
-    def after_work_go(self, go_rest):
+    def after_work_go(self):
         data = f.read_data()
         data['after_work_go'] = True
         # 重新读入初始值班顺序
         self.name_nomal, self.name_weekend = f.read_curent()
+        self.name_holiday = copy.deepcopy(data['name_holiday'])
         self.a = 0
         # 清空文本
         self.t.delete(1.0, "end")
         self.t.insert("end", "本周值班人员：\r\n")
         self.list_duty()  # 此处会更改当前值班序列
-
-        self.name_nomal.remove(go_rest)
-        self.name_weekend.remove(go_rest)
-        self.name_holiday.append(go_rest)
-
+        for i in data['go_rest_after_work']:
+            self.name_nomal.remove(i)
+            self.name_weekend.remove(i)
+            self.name_holiday.append(i)
         data['after_work_go_name_nomal'] = self.name_nomal
         data['after_work_go_name_weekend'] = self.name_weekend
         f.write_data(data)
 
     # 请假休假
     def go_holiday(self):
-        go_rest = self.e2.get()
-        # 将go_rest保存，再次大开始调用
         data = f.read_data()
-        data["go_rest"] = go_rest
-        f.write_data(data)
+        go_rest = self.e2.get()
+
+        # 将go_rest保存，再次大开始调用
+
         if go_rest not in self.name_nomal and len(go_rest) != 0:
-            tk.messagebox.showinfo(title="输入有误", message="您输入的名称错误或其正在休假中，请重新输入即将休假人员")
-            go_rest = ''
+            tk.messagebox.showinfo(title="输入有误",
+                                   message="您输入的名称错误或其正在休假(或出公差)中，"
+                                           "请重新输入即将休假(或公差)人员")
         elif go_rest in self.name_nomal:
             go = tk.messagebox.askyesno(title='提示',
                                         message='休假人员是否本周值完班再休假？'
-                                                '（注：如果休假人员本周本来就不用值班，选择《是》将不会被加入到本周值班列表中。）')
+                                                '（选择【是】,本周继续值班,下周开始休假|选择【否】,本周不值班,开始休假）')
             # 本周值完班后再休假
             if go:
                 # 如果执行本周值完班再休假，将此情况写入缓存，本周再次打开时（today<=date)，再一次自动调用本周值完班再离队，当下周或
                 # 下几周（today>date)打开时,首先将after_work_go改为false(这样 update时间后，不会再次跳入，本周值完班再休假)，
                 # 如果是下周打开，直接读入第二周离队状态，如果是下几周后，读入离队状态从第二周开始loop
-                self.after_work_go(go_rest)
+                data["go_rest_after_work"].append(go_rest)
+                f.write_data(data)
+                self.after_work_go()
                 self.v1.set("当前可值班人员更改为：%s" % self.name_nomal)
                 self.v2.set("当前休假人更改员为：%s" % self.name_holiday)
                 self.t.insert("end", "下周值班人员：\r\n")
                 self.list_duty()
-
-
+                if data['back_work_next']:
+                    self.work_next()
+                    self.back_work_next_due_to_name()
 
             else:
                 # 重新读入初始值班顺序
@@ -314,11 +358,8 @@ class ArangeDuty():
     def work_next(self):
         data = f.read_data()
         data['back_work_next'] = True
-        print("执行back_work_next")
-        print(data['back_work_next'])
         f.write_data(data)
         data = f.read_data()
-        print(data)
         # 重新读入初始值班顺序
         self.name_nomal, self.name_weekend = f.read_curent()
         # 清空文本
@@ -327,7 +368,9 @@ class ArangeDuty():
         # 程序打开时，已经调用了一次排班，self.a变为7，这里重新排班需要重置回0
         self.a = 0
         self.list_duty()
-
+        if data['after_work_go']:
+            self.name_nomal = data['after_work_go_name_nomal']
+            self.name_weekend = data['after_work_go_name_weekend']
         # (还未返回的下一次序列)将当前序列写入缓存（下次试试能不能用多进程解决这个问题）
         data = f.read_data()
         data['cache_name_nomal'] = self.name_nomal
@@ -359,17 +402,36 @@ class ArangeDuty():
         self.t.insert("end", "下周值班人员：\r\n")
         self.list_duty()
 
+    # 调用back_work_next后值班顺序已经改变，重新读入修改后写入current，避免归队后紧接着休假，读入下一周序列
+    def back_work_next_due_to_name(self):
+        self.name_nomal = f.read_data()['cache_name_nomal']
+        self.name_weekend = f.read_data()['cache_name_weekend']
+        self.name_holiday = f.read_data()['name_holiday']
+        for i in f.read_data()['re_back']:
+            self.name_holiday.remove(i)
+            f.add_list(i, self.name_nomal, self.name_weekend, self.name_holiday)
+        self.v1.set("当前休假人更改员为：%s" % self.name_holiday)
+        self.v2.set("当前可值班人员更改为：%s" % self.name_nomal)
+        self.t.insert("end", "下周值班人员：\r\n")
+        # 此时为值班列表为休假返回第一周未参加值班，第二周参加值班的值班序列列表
+        data = f.read_data()
+        data['back_work_next_name_nomal'] = self.name_nomal
+        data['back_work_next_name_weekend'] = self.name_weekend
+        f.write_data(data)
+        self.list_duty()
+
     def back_work(self):
         re_back = self.e1.get()
         data = f.read_data()
-        data['re_back'] = re_back
+        data['re_back'].append(re_back)
         f.write_data(data)
         if re_back not in self.name_holiday and len(re_back) != 0:
             tk.messagebox.showinfo(title="输入有误", message="您输入的名称错误或其已在值班人员列表，请重新输入正确的返回人员")
             re_back = ''
         elif re_back in self.name_holiday:
             accept_re = tk.messagebox.askyesno(title='提示',
-                                               message='休假返回人员是否从本周开始值班？（<是>：本周开始值班|<否>：下周开始值班）')
+                                               message='休假(或公差)返回人员是否从本周开始值班？'
+                                                       '（【是】：本周开始值班|【否】：下周开始值班）')
             # 休假归队人员本周开始值班
             if accept_re:
                 self.back_work_current(re_back)
@@ -377,31 +439,7 @@ class ArangeDuty():
             # 休假归队人员下周开始值班
             else:
                 self.work_next()
-
-                # 调用后值班顺序已经改变，重新读入修改后写入current，避免归队后紧接着休假，读入下一周序列
-                # 此列表相当于休假归队，本周就开始值班的列表
-                self.name_nomal, self.name_weekend = f.read_curent()
-                print('出实话读入', self.name_weekend)
-                f.add_list(re_back, self.name_nomal, self.name_weekend, self.name_holiday)
-                print('0次,', self.name_weekend)
-                # 此时读入缓存内容接着执行下面操作，curent列表将不会被改变
-                self.name_nomal, self.name_weekend = f.read_data()['cache_name_nomal'], f.read_data()[
-                    'cache_name_weekend']
-                print('1次', self.name_weekend)
-                self.name_holiday.remove(re_back)
-                print("下一次", f.read_data()['back_work_next'])
-                f.add_list(re_back, self.name_nomal, self.name_weekend, self.name_holiday)
-                self.v1.set("当前休假人更改员为：%s" % self.name_holiday)
-                self.v2.set("当前可值班人员更改为：%s" % self.name_nomal)
-                self.t.insert("end", "下周值班人员：\r\n")
-                # 此时为值班列表为休假返回第一周未参加值班，第二周参加值班的值班序列列表
-                data = f.read_data()
-                data['back_work_next_name_nomal'] = self.name_nomal
-                data['back_work_next_name_weekend'] = self.name_weekend
-                f.write_data(data)
-                print('2次，', self.name_weekend)
-                print("adfadsfasdf", data['back_work_next'])
-                self.list_duty()
+                self.back_work_next_due_to_name()
 
     # 排班
     def arr_duty(self):
@@ -544,6 +582,13 @@ class ArangeDuty():
         if e2.get() == '' or e3.get() == '':
             tk.messagebox.showinfo(title='错误', message='本周一或本周六值班人员未输入，初始化失败,请按照要求输入相应人员！')
         else:
+            data = f.read_data()
+            data['re_back'] = []
+            data['go_rest_after_work'] = []
+            data['after_work_go'] = False
+            data['back_work_next'] = False
+            data['name_holiday'] = self.name_holiday
+            f.write_data(data)
             f.write_curent(self.name_nomal, self.name_weekend)
             self.reset()
 
@@ -561,9 +606,9 @@ class ArangeDuty():
         window.title("初始化")
         current_holiday_name = tk.StringVar()
         current_duty_name = tk.StringVar()
-        l1 = tk.Label(window, textvariable=current_holiday_name,  width=80)
+        l1 = tk.Label(window, textvariable=current_holiday_name, width=80)
         l2 = tk.Label(window, textvariable=current_duty_name, width=80)
-        l3 = tk.Label(window, text="请输入当前休假人员，系统将自动将其加入休假列表^=^",bg='gold', width=43)
+        l3 = tk.Label(window, text="请输入当前休假人员，系统将自动将其加入休假列表^=^", bg='gold', width=43)
         l4 = tk.Label(window, text='请输入本周星期一值班人员:', width=50)
         l5 = tk.Label(window, text='请输入本周星期六值班人员：', width=50)
         e1 = tk.Entry(window, width=15)
@@ -575,7 +620,7 @@ class ArangeDuty():
         b4 = tk.Button(window,
                        text="确认本周值班无误后点击我",
                        command=self.write_current_reset,
-                       width= 40,
+                       width=40,
                        height=2)
 
         l1.place(x=20, y=20, anchor='nw')
@@ -606,7 +651,7 @@ class ArangeDuty():
         # 如果是，将当前值班正常和周末值班列表请空，获取输入的当前休假人员，将其添加到休假人员列表
         if yes:
             tk.messagebox.showinfo(title='提示',
-                                         message='初始化需首先确定休假人员，如果无休假人员，请直接点击【添加】按钮')
+                                   message='初始化需首先确定休假人员，如果无休假人员，请直接点击【添加】按钮')
             self.name_nomal = []
             self.name_weekend = []
             self.name_holiday = []
